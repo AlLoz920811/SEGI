@@ -59,36 +59,34 @@ TABLES_DIR = BASE_DIR / "tables"
 # Cliente de OpenAI listo para reutilizar en endpoints que lo requieran
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Instancia de FastAPI con metadatos básicos
-app = FastAPI(title="PDF Split API", version="1.0.0", lifespan=lifespan)
-
-# Configuración del logger para Azure Application Insights
+# Logger (se configurará en el lifespan)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-logger.propagate = False
-
-# Intenta configurar el logger de Azure, con fallback a la consola
-if APPINSIGHTS_CONNECTION_STRING:
-    try:
-        handler = AzureLogHandler(connection_string=APPINSIGHTS_CONNECTION_STRING)
-        logger.addHandler(handler)
-        logger.info("Logger configurado con Azure Application Insights.")
-    except Exception as e:
-        # Si falla la inicialización de Azure, usa la consola
-        handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-        logger.addHandler(handler)
-        logger.error(f"Error al configurar AzureLogHandler: {e}. Usando logging a consola.")
-else:
-    # Si no hay connection string, usa la consola
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-    logger.addHandler(handler)
-    logger.warning("APPINSIGHTS_CONNECTION_STRING no encontrada. Usando logging a consola.")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: crear carpetas de forma idempotente
+    # Startup: configurar logger y crear carpetas
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+    # Intenta configurar el logger de Azure, con fallback a la consola
+    conn_str = get_secret("APPINSIGHTS_CONNECTION_STRING", raise_if_missing=False)
+    if conn_str:
+        try:
+            handler = AzureLogHandler(connection_string=conn_str)
+            logger.addHandler(handler)
+            logger.info("Logger configurado con Azure Application Insights.")
+        except Exception as e:
+            logger.handlers.clear()
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+            logger.addHandler(handler)
+            logger.error(f"Error al configurar AzureLogHandler: {e}. Usando logging a consola.")
+    else:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        logger.addHandler(handler)
+        logger.warning("APPINSIGHTS_CONNECTION_STRING no encontrada. Usando logging a consola.")
+
     logger.info("Iniciando aplicación y creando directorios...")
     for d in (FILES_DIR, PAGES_DIR, RESULTS_DIR, TABLES_DIR):
         d.mkdir(parents=True, exist_ok=True)
@@ -96,6 +94,10 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown: (opcional) liberar recursos 
     logger.info("Cerrando aplicación.")
+
+# Instancia de FastAPI con metadatos básicos
+app = FastAPI(title="PDF Split API", version="1.0.0", lifespan=lifespan)
+
 
 @app.get("/", summary="Bienvenida") # http://localhost:8000/
 def root():
