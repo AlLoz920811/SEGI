@@ -52,6 +52,34 @@ tables/   # tablas generadas (listas "aplanadas") a Excel
 
 ---
 
+## ⚙️ Configuración
+
+La API requiere ciertas variables de entorno para funcionar correctamente. Estas se pueden definir en un archivo `.env` en la raíz del proyecto. El archivo `.env` está ignorado por Git para proteger las credenciales.
+
+Un ejemplo de `.env`:
+
+```shell
+# Azure Application Insights (opcional)
+APPINSIGHTS_CONNECTION_STRING="tu_connection_string_de_app_insights"
+
+# Credenciales de servicios
+VISION_AGENT_API_KEY="tu_vision_agent_api_key"
+OPENAI_API_KEY="tu_openai_api_key"
+
+# Configuración de la base de datos PostgreSQL
+DB_HOST="tu_db_host"
+DB_PORT="5432"
+DB_NAME="tu_db_name"
+DB_USER="tu_db_user"
+DB_PASSWORD="tu_db_password"
+```
+
+### Logging
+
+La aplicación integra logging con **Azure Application Insights**. Si se provee la variable `APPINSIGHTS_CONNECTION_STRING`, los logs de la aplicación (eventos de ciclo de vida, peticiones a endpoints y errores) serán enviados a Azure. Si la variable no se encuentra, el logging se realizará en la consola, permitiendo el desarrollo y la depuración en local sin necesidad de una conexión a Azure.
+
+---
+
 ## 🛠️ Dependencias
 
 - **FastAPI**, **Uvicorn** (ASGI)
@@ -62,11 +90,12 @@ tables/   # tablas generadas (listas "aplanadas") a Excel
 - **beautifulsoup4** (parseo de tabla HTML)
 - Paquete del extractor: `agentic_doc.parse` (tu framework de **Agentic Document Extraction**)
 - **openai** (cliente Python para la etapa LLM)
+- **opencensus-ext-azure** (logging en Azure Application Insights)
 
 Instalación típica:
 
 ```bash
-pip install fastapi uvicorn pypdf pandas openpyxl pg8000 python-dotenv beautifulsoup4 openai
+pip install fastapi uvicorn pypdf pandas openpyxl pg8000 python-dotenv beautifulsoup4 openai opencensus-ext-azure
 # y tu paquete/SDK para agentic_doc.parse
 ```
 
@@ -89,6 +118,9 @@ DB_PORT=5432
 DB_NAME=mi_base
 DB_USER=mi_usuario
 DB_PASSWORD=mi_password
+
+# Azure Application Insights (opcional)
+APPINSIGHTS_CONNECTION_STRING=tu_connection_string_de_app_insights
 ```
 
 `helpers.get_secret` carga estos valores con soporte para `.env`.

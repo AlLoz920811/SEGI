@@ -2,7 +2,7 @@
 # uvicorn main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 300
 
 
-## === API de FastAPI para separar PDFs por páginas, extraer contenido con Agentic Document Extraction,
+# === API de FastAPI para separar PDFs por páginas, extraer contenido con Agentic Document Extraction,
 #     generar tablas estructuradas con ayuda de OpenAI y finalmente insertar resultados a PostgreSQL. ===
 
 from fastapi import FastAPI, HTTPException, Query
@@ -15,6 +15,8 @@ import pandas as pd
 import pg8000
 from contextlib import asynccontextmanager
 from agentic_doc.parse import parse
+import logging
+from opencensus.ext.azure.log_exporter import AzureLogHandler
 
 # Import de utilidades y helpers:
 # - Validaciones/normalizaciones de archivos (.pdf/.xlsx)
@@ -44,7 +46,8 @@ DB_HOST=get_secret("DB_HOST")
 DB_PORT=get_secret("DB_PORT")              
 DB_NAME=get_secret("DB_NAME")   
 DB_USER=get_secret("DB_USER")        
-DB_PASSWORD=get_secret("DB_PASSWORD")  
+DB_PASSWORD=get_secret("DB_PASSWORD")
+APPINSIGHTS_CONNECTION_STRING = get_secret("APPINSIGHTS_CONNECTION_STRING")
 
 # Directorios base (junto a main.py y helpers.py)
 BASE_DIR = Path(__file__).resolve().parent
@@ -57,15 +60,42 @@ TABLES_DIR = BASE_DIR / "tables"
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Instancia de FastAPI con metadatos básicos
-app = FastAPI(title="PDF Split API", version="1.0.0")
+app = FastAPI(title="PDF Split API", version="1.0.0", lifespan=lifespan)
+
+# Configuración del logger para Azure Application Insights
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.propagate = False
+
+# Intenta configurar el logger de Azure, con fallback a la consola
+if APPINSIGHTS_CONNECTION_STRING:
+    try:
+        handler = AzureLogHandler(connection_string=APPINSIGHTS_CONNECTION_STRING)
+        logger.addHandler(handler)
+        logger.info("Logger configurado con Azure Application Insights.")
+    except Exception as e:
+        # Si falla la inicialización de Azure, usa la consola
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        logger.addHandler(handler)
+        logger.error(f"Error al configurar AzureLogHandler: {e}. Usando logging a consola.")
+else:
+    # Si no hay connection string, usa la consola
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    logger.addHandler(handler)
+    logger.warning("APPINSIGHTS_CONNECTION_STRING no encontrada. Usando logging a consola.")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: crear carpetas de forma idempotente
+    logger.info("Iniciando aplicación y creando directorios...")
     for d in (FILES_DIR, PAGES_DIR, RESULTS_DIR, TABLES_DIR):
         d.mkdir(parents=True, exist_ok=True)
+    logger.info("Directorios listos.")
     yield
     # Shutdown: (opcional) liberar recursos 
+    logger.info("Cerrando aplicación.")
 
 @app.get("/", summary="Bienvenida") # http://localhost:8000/
 def root():
@@ -89,7 +119,9 @@ def split_pdf(filename: str = Query(..., description="Nombre del archivo en la c
         415 Unsupported Media Type
         500 Internal Server Error
     """
+    logger.info(f"Recibida solicitud para /split con filename: '{filename}'")
     if not filename:
+        logger.error("Solicitud /split rechazada: Falta el parámetro 'filename'")
         raise HTTPException(status_code=400, detail="Falta el parámetro 'filename'")
 
     try:
@@ -99,28 +131,32 @@ def split_pdf(filename: str = Query(..., description="Nombre del archivo en la c
         num_pages, out_dir = split_pdf_to_pages(input_pdf, PAGES_DIR)
         
         # Respuesta exitosa con conteo de páginas y ruta de salida
+        output_dir = str(PAGES_DIR.relative_to(BASE_DIR))
+        logger.info(f"PDF '{filename}' separado exitosamente en {num_pages} páginas en '{output_dir}'")
         return JSONResponse(
             status_code=200,
             content={
                 "message": "Proceso de separación de páginas exitoso",
                 "pages": num_pages,
-                "output_dir": str(out_dir),
+                "output_dir": output_dir,
             },
         )
     # Manejo de errores coherente con el contrato del endpoint
+    except HTTPException as e:
+        logger.error(f"Error de negocio en /split para '{filename}': {e.detail}")
+        raise
     except FileNotFoundError as e:
+        logger.error(f"Archivo no encontrado en /split para '{filename}': {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except UnsupportedFileTypeError as e:
-        # 415 Unsupported Media Type
+        logger.error(f"Tipo de archivo no soportado en /split para '{filename}': {e}")
         raise HTTPException(status_code=415, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        # Catch-all: errores inesperados
+        logger.exception(f"Error inesperado en /split para '{filename}': {e}")
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 
-@app.get("/extract", summary="Extraer chunks con Agentic Document Extraction y guardar en Excel") # http://localhost:8000/extract?filename=<tu_archivo_page_X.pdf>
+@app.get("/extract", summary="Extrae chunks de una página de PDF y guarda en Excel") # http://localhost:8000/extract?filename=<tu_archivo_page_X.pdf>
 def extract(
     filename: str = Query(..., description="Nombre del PDF paginado dentro de la carpeta 'pages'")
 ):
@@ -133,6 +169,7 @@ def extract(
       5) Construir DataFrame con chunks y metadata
       6) Guardar Excel en carpeta results
     """
+    logger.info(f"Recibida solicitud para /extract con filename: '{filename}'")
     if not filename:
         # Validación de parámetro requerido
         raise HTTPException(status_code=400, detail="Falta el parámetro 'filename'")
@@ -224,6 +261,7 @@ def extract(
         df.to_excel(excel_path, index=False)  
         
         # Respuesta HTTP con detalles de la extracción
+        logger.info(f"Extracción de '{filename}' completada. {len(df)} chunks guardados en '{excel_path.relative_to(BASE_DIR)}'")
         return JSONResponse(
             status_code=200,
             content={
@@ -232,34 +270,36 @@ def extract(
                 "original_pdf": original_pdf,
                 "page": page,
                 "rows": int(len(df)),
-                "excel_path": str(excel_path),
+                "excel_path": str(excel_path.relative_to(BASE_DIR)),
             },
         )
 
     # Manejo de errores de validación, recursos y catch-all
-    except HTTPException:
+    except HTTPException as e:
+        logger.error(f"Error de negocio en /extract para '{filename}': {e.detail}")
         raise
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
     except FileNotFoundError as e:
+        logger.error(f"Archivo no encontrado en /extract para '{filename}': {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.exception(f"Error inesperado en /extract para '{filename}': {e}")
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 
-@app.get("/generate", summary="Generar tabla final desde Excel de results y guardar en tables") # http://localhost:8000/generate?filename=<tu_archivo_page_X.xlsx>
+@app.get("/generate", summary="Genera tabla final a partir de Excel de chunks") # http://localhost:8000/generate?filename=<tu_archivo_page_X.xlsx>
 def generate(
     filename: str = Query(..., description="Nombre del archivo .xlsx dentro de 'results', p.ej. covalca_1_page_1.xlsx")
 ):
     """
     Flujo:
-      1) Validar existencia y extensión .xlsx en 'results' (helpers.ensure_xlsx_extension)
+      1) Validar existencia y extensión .xlsx en 'results'
       2) Leer a pandas -> df
       3) Ejecutar pipeline LLM sobre df['clean_text'] -> blnc_data
       4) Convertir blnc_data a DataFrame -> gen_df
       5) Copiar metadatos repetidos (name_file, url_file, page, active, capture_log, subject_mail) desde df a gen_df
       6) Guardar gen_df en 'tables' como .xlsx
     """
+    logger.info(f"Recibida solicitud para /generate con filename: '{filename}'")
     if not filename:
         raise HTTPException(status_code=400, detail="Falta el parámetro 'filename'")
 
@@ -299,27 +339,29 @@ def generate(
         out_path = TABLES_DIR / out_name
         enrich_gen_df.to_excel(out_path, index=False)
         # 7) Respuesta indicando la tabla generada y cantidad de filas
+        logger.info(f"Tabla generada para '{filename}' guardada en '{out_path.relative_to(BASE_DIR)}'")
         return JSONResponse(
             status_code=200,
             content={
                 "message": "Generación completada y guardada en Excel",
                 "input_results": str(xlsx_path),
                 "rows": int(len(enrich_gen_df)),
-                "output_tables": str(out_path),
+                "output_tables": str(out_path.relative_to(BASE_DIR)),
             },
         )
     # Errores de tipo/validación/extensión y catch-alls
-    except UnsupportedFileTypeError as e:
-        raise HTTPException(status_code=415, detail=str(e))
-    except HTTPException:
+    except HTTPException as e:
+        logger.error(f"Error de negocio en /generate para '{filename}': {e.detail}")
         raise
     except FileNotFoundError as e:
+        logger.error(f"Archivo no encontrado en /generate para '{filename}': {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.exception(f"Error inesperado en /generate para '{filename}': {e}")
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 
-@app.get("/insert", summary="Insertar .xlsx desde 'tables' a PostgreSQL (tbl_captura_ia)") # http://localhost:8000/insert?filename=<tu_archivo_page_X_generated.xlsx>
+@app.get("/insert", summary="Inserta resultados de .xlsx a la base de datos") # http://localhost:8000/insert?filename=<tu_archivo_page_X_generated.xlsx>
 def insert_results_to_db(
     filename: str = Query(..., description="Archivo .xlsx dentro de 'tables', ej: covalca_9_page_3_generated.xlsx")
 ):
@@ -331,11 +373,12 @@ def insert_results_to_db(
       4) Conectar a PostgreSQL (pg8000)
       5) INSERT de todas las filas en tbl_captura_ia
     """
+    logger.info(f"Recibida solicitud para /insert con filename: '{filename}'")
     if not filename:
         raise HTTPException(status_code=400, detail="Falta el parámetro 'filename'")
 
     try:
-        # 1) Validación de ruta/archivo
+        # 1) Validar existencia y extensión .xlsx del archivo en 'tables'
         path = (TABLES_DIR / filename).resolve()
         if not path.exists():
             raise HTTPException(status_code=404, detail=f"No se encontró el archivo en 'tables': {filename}")
@@ -394,8 +437,11 @@ def insert_results_to_db(
         except Exception as e:
             try:
                 conn.rollback()
-            except Exception:
+                logger.warning(f"Rollback ejecutado tras error de inserción para '{filename}'.")
+            except Exception as rb_e:
+                logger.error(f"Error durante el rollback para '{filename}': {rb_e}")
                 pass
+            logger.exception(f"Error al insertar en la base de datos para '{filename}': {e}")
             raise HTTPException(status_code=500, detail=f"Error al insertar en la base de datos: {str(e)}")
         finally:
             try:
@@ -403,6 +449,7 @@ def insert_results_to_db(
             except Exception: 
                 pass
         # 9) Respuesta con conteo de filas insertadas
+        logger.info(f"{len(rows)} filas de '{filename}' insertadas exitosamente en tabla '{dst_table}'.")
         return JSONResponse(
             status_code=200,
             content={
@@ -415,23 +462,29 @@ def insert_results_to_db(
 
     # --- Manejadores de error homogéneos ---
     except HTTPException: 
-        # Re-lanza errores ya formateados
+        # Re-lanza errores ya formateados, ya loggeados en su contexto
         raise
     except FileNotFoundError as e:
         # Maneja archivos no encontrados
+        logger.error(f"Archivo no encontrado en /insert para '{filename}': {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except UnsupportedFileTypeError as e:
         # Maneja archivos no soportados
+        logger.error(f"Tipo de archivo no soportado en /insert para '{filename}': {e}")
         raise HTTPException(status_code=415, detail=str(e))
     except ValueError as e:
         # Maneja valores inválidos
+        logger.error(f"Valor inválido en /insert para '{filename}': {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except pg8000.exceptions.InterfaceError as e:
         # Errores de conexión/protocolo
+        logger.error(f"Fallo de conexión a la base de datos en /insert: {e}")
         raise HTTPException(status_code=502, detail=f"Fallo de conexión a la base de datos: {str(e)}")
     except pg8000.exceptions.DatabaseError as e:
         # Errores al ejecutar SQL
+        logger.error(f"Error de base de datos en /insert para '{filename}': {e}")
         raise HTTPException(status_code=500, detail=f"Error de base de datos: {str(e)}")
     except Exception as e:
         # Maneja errores inesperados
+        logger.exception(f"Error interno inesperado en /insert para '{filename}': {e}")
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
