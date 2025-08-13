@@ -2,7 +2,7 @@
 # uvicorn main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 300
 
 
-# === API de FastAPI para separar PDFs por páginas, extraer contenido con Agentic Document Extraction,
+## === API de FastAPI para separar PDFs por páginas, extraer contenido con Agentic Document Extraction,
 #     generar tablas estructuradas con ayuda de OpenAI y finalmente insertar resultados a PostgreSQL. ===
 
 from fastapi import FastAPI, HTTPException, Query
