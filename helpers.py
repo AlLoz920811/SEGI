@@ -2,7 +2,7 @@
 # Utilidades para validación/normalización de archivos, extracción/limpieza de datos,
 # llamadas a OpenAI y posprocesamiento de estructuras para generación de tablas.
 
-import os, json, re, ast
+import os, json, re, ast, shutil
 from openai import OpenAI
 import pandas as pd
 from pathlib import Path
@@ -155,6 +155,9 @@ def split_pdf_to_pages(input_pdf: Path, output_dir: Path) -> Tuple[int, Path]:
         with open(out_path, "wb") as f:
             writer.write(f)
 
+    # Move file to sources
+    shutil.move(f"{input_pdf}", f"/var/www/openai/uploads/source/{basename}.pdf")
+    
     return num_pages, output_dir
 
 
