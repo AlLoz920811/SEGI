@@ -95,6 +95,13 @@ def split_pdf(filename: str = Query(..., description="Nombre del archivo en la c
     try:
         # Preprocesamiento: valida que exista y sea PDF; normaliza extensión a .pdf si fuese .PDF
         input_pdf = preprocess_filename(filename, FILES_DIR)
+        # Validar si el archivo ya fue procesado
+        output_page_path = PAGES_DIR / f"{input_pdf.stem}_page_1.pdf"
+        if output_page_path.exists():
+            raise HTTPException(
+                status_code=409, 
+                detail=f"El archivo '{filename}' ya ha sido procesado. Los resultados existen en 'uploads/pages/'."
+            )
         # Proceso: separa por páginas en la carpeta PAGES_DIR 
         num_pages, out_dir = split_pdf_to_pages(input_pdf, PAGES_DIR)
         
@@ -126,9 +133,9 @@ def extract(
 ):
     """
     Flujo:
-      1) Validar existencia de pages/<file_name>
-      2) Derivar original_pdf desde file_name (e.g. covalca_3.pdf)
-      3) Obtener número de página con extract_page_number(file_name)
+      1) Validar existencia de pages/<filename>
+      2) Derivar original_pdf desde filename (e.g. covalca_3.pdf)
+      3) Obtener número de página con extract_page_number(filename)
       4) parse(documents=[path], include_marginalia=True, include_metadata_in_markdown=True)
       5) Construir DataFrame con chunks y metadata
       6) Guardar Excel en carpeta results
@@ -146,6 +153,14 @@ def extract(
         if PAGES_DIR.resolve() not in path.parents:
             # Evita path traversal fuera del directorio previsto
             raise HTTPException(status_code=400, detail="Ruta inválida fuera de 'pages'")
+
+        # Validar si el archivo ya fue procesado
+        output_excel_path = RESULTS_DIR / f"{path.stem}.xlsx"
+        if output_excel_path.exists():
+            raise HTTPException(
+                status_code=409, 
+                detail=f"El archivo '{filename}' ya ha sido extraído. El resultado existe en 'uploads/results/{output_excel_path.name}'."
+            )
 
         # 2) Derivar nombre del PDF original a partir del nombre con sufijo _page_N
         original_pdf = extract_original_pdf_name(filename)
@@ -275,6 +290,14 @@ def generate(
             raise HTTPException(status_code=400, detail="Ruta inválida fuera de 'results'")
 
         xlsx_path = ensure_xlsx_extension(path)  # valida/normaliza .xlsx
+
+        # Validar si el archivo ya fue procesado
+        output_generated_path = TABLES_DIR / f"{path.stem}_generated.xlsx"
+        if output_generated_path.exists():
+            raise HTTPException(
+                status_code=409, 
+                detail=f"El archivo '{filename}' ya ha sido generado. El resultado existe en 'uploads/tables/{output_generated_path.name}'."
+            )
 
         # 2) Leer a DataFrame
         df = pd.read_excel(xlsx_path)  # requiere openpyxl instalado
