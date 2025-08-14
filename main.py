@@ -4,7 +4,7 @@
 
 ## === API de FastAPI para separar PDFs por páginas, extraer contenido con Agentic Document Extraction,
 #     generar tablas estructuradas con ayuda de OpenAI y finalmente insertar resultados a PostgreSQL. ===
-
+import os
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pathlib import Path
@@ -48,10 +48,10 @@ DB_PASSWORD=get_secret("DB_PASSWORD")
 
 # Directorios base (junto a main.py y helpers.py)
 BASE_DIR = Path(__file__).resolve().parent
-FILES_DIR = BASE_DIR / "files"
-PAGES_DIR = BASE_DIR / "pages"
-RESULTS_DIR = BASE_DIR / "results"
-TABLES_DIR = BASE_DIR / "tables"
+FILES_DIR = BASE_DIR / "uploads/files"
+PAGES_DIR = BASE_DIR / "uploads/pages"
+RESULTS_DIR = BASE_DIR / "uploads/results"
+TABLES_DIR = BASE_DIR / "uploads/tables"
 
 # Cliente de OpenAI listo para reutilizar en endpoints que lo requieran
 client = OpenAI(api_key=OPENAI_API_KEY)
@@ -165,7 +165,7 @@ def extract(
         capture_time_iso = datetime.now(tz).isoformat(" ", "seconds")
 
         records = []
-        link = f"https://openia.soft-box.com.mx/files/{original_pdf}"  # URL pública del archivo original (contexto)
+        link = f"https://v-card.mx/captura/uploads/source/{original_pdf}"  # URL pública del archivo original (contexto)
         for r in result:
             for i, chunk in enumerate(r.chunks):
                 # chunk_type puede ser Enum; tomamos su .value si existe
@@ -222,6 +222,9 @@ def extract(
         excel_name = f"{original_stem}_page_{page}.xlsx"
         excel_path = RESULTS_DIR / excel_name
         df.to_excel(excel_path, index=False)  
+        
+        # Borrar el archivo tu_archivo_page_X.pdf para monitorear los nuevos que lleguen
+        os.remove(PAGES_DIR / filename)
         
         # Respuesta HTTP con detalles de la extracción
         return JSONResponse(
@@ -298,6 +301,10 @@ def generate(
         out_name = f"{Path(filename).stem}_generated.xlsx"
         out_path = TABLES_DIR / out_name
         enrich_gen_df.to_excel(out_path, index=False)
+        
+        # 6.1) Borrar el archivo tu_archivo_page_X.xlsx para monitorear los nuevos que lleguen
+        os.remove(RESULTS_DIR / filename)
+        
         # 7) Respuesta indicando la tabla generada y cantidad de filas
         return JSONResponse(
             status_code=200,
@@ -402,6 +409,10 @@ def insert_results_to_db(
                 conn.close()
             except Exception: 
                 pass
+        
+        # 8.1) Borrar el archivo tu_archivo_page_X_generated.xlsx para monitorear los nuevos que lleguen
+        os.remove(TABLES_DIR / filename)
+        
         # 9) Respuesta con conteo de filas insertadas
         return JSONResponse(
             status_code=200,
