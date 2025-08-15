@@ -385,10 +385,31 @@ def balance_lists_by_item_id(data: Dict[str, List[Any]], placeholder: Any = "") 
 
     return balanced
 
+def get_original_pdf_from_generated_xlsx(filename: str) -> str:
+    """
+    Derives the original PDF name from a generated XLSX filename.
+    Example: 'covalca_9_page_3_generated.xlsx' -> 'covalca_9.pdf'
+    """
+    if not isinstance(filename, str) or not filename:
+        return ""
+
+    base_name = Path(filename).stem
+    # Remove '_generated'
+    if base_name.endswith('_generated'):
+        base_name = base_name[:-10]
+
+    # Remove '_page_N'
+    match = re.match(r'^(?P<base>.+?)_page_\d+$', base_name)
+    if match:
+        original_base = match.group('base')
+    else:
+        original_base = base_name
+
+    return f"{original_base}.pdf"
+
 # 1. Define la función que hará el filtrado y concatenación
 def extract_resume_markdown(x: Any, y: Any, df: pd.DataFrame) -> str:
     z = df[df['name_file'] == x]
     textos = z[z['page'] == y]['clean_text'].values
     # Si no hay valores, devolvemos cadena vacía
     return " ".join(textos) if len(textos) > 0 else ""
-
