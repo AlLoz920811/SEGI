@@ -181,7 +181,7 @@ def extract(
         capture_time_iso = datetime.now(tz).isoformat(" ", "seconds")
 
         records = []
-        link = f"https://v-card.mx/captura/uploads/source/{original_pdf}"  # URL pública del archivo original (contexto)
+        link = f"https://v-card.mx/captura/uploads/{original_pdf}"  # URL pública del archivo original (contexto)
         for r in result:
             for i, chunk in enumerate(r.chunks):
                 # chunk_type puede ser Enum; tomamos su .value si existe
