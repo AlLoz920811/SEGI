@@ -285,10 +285,11 @@ def generate_invoice_json(client: OpenAI, resume_markdown: str):
             
             ## RULES
             1. Return **only** the JSON object above; no extra keys, commentary or markdown.
-            2. If the input is text extracted from a Trexsel invoice, ignore 'FEDEX IP: ' row from list of tuples.
-            3. Use valid UTF‑8, standard double quotes, no trailing commas.
-            4. The entire response must be ≤ 3000 tokens.
-            5. Just extract the client's address and ignores information regarding email, phone, or fax.
+            2. Lists the items if the item_id does not exist as a numeric value in the invoice.
+            3. If the input is text extracted from a Trexsel invoice, ignore 'FEDEX IP: ' row from list of tuples.
+            4. Use valid UTF‑8, standard double quotes, no trailing commas.
+            5. The entire response must be ≤ 3000 tokens.
+            6. Just extract the client's address and ignores information regarding email, phone, or fax.
             """
     
     chat_history = []
