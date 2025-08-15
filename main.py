@@ -34,7 +34,8 @@ from helpers import (
     generate_invoice_json,            
     _extract_json_from_text,          
     balance_lists_by_item_id,        
-    enrich_df                     
+    enrich_df,                     
+    get_original_pdf_from_generated_xlsx
 )
 
 # === Configuración de variables de entorno ===
@@ -437,11 +438,13 @@ def insert_results_to_db(
         os.remove(TABLES_DIR / filename)
         
         # 9) Respuesta con conteo de filas insertadas
+        original_filename = get_original_pdf_from_generated_xlsx(filename)
         return JSONResponse(
             status_code=200,
             content={
                 "message": "Inserción completada",
                 "filename": filename,
+                "original_filename": original_filename,
                 "table": dst_table,
                 "rows_inserted": int(len(rows)),
             },
