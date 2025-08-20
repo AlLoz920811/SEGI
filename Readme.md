@@ -207,13 +207,6 @@ curl "http://localhost:8000/generate?filename=covalca_1_page_1.xlsx"
 # Insert
 curl "http://localhost:8000/insert?filename=covalca_1_page_1_generated.xlsx"
 ```
-
----
-
-## 📜 License
-
-MIT (or the license of your choice). Add `LICENSE` to the repo.
-
 ---
 
 ## 🤝 Contributions
