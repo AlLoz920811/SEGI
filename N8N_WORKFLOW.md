@@ -110,4 +110,4 @@ The workflow includes monitoring nodes that:
 - Sensitive data is encrypted in transit and at rest
 - Access to the N8N interface is restricted to authorized personnel
 
-![N8N Workflow](workflow_pdf_processing.png)
+![N8N Workflow](workflow_pdf_processing.jpg)
