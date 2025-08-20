@@ -1,43 +1,43 @@
 # PDF Split & Extract API (FastAPI)
 
-API para **dividir PDFs por páginas**, **extraer contenido** (Agentic Document Extraction), **generar tablas estructuradas con LLM** y **cargar resultados a PostgreSQL**.  
-Proyecto compuesto por:
+API for **splitting PDFs by pages**, **extracting content** (Agentic Document Extraction), **generating structured tables with LLM**, and **loading results to PostgreSQL**.  
+Project structure:
 
-- `main.py` → API con FastAPI
-- `helpers.py` → utilidades (validación de archivos, limpieza, funciones LLM, etc.)
+- `main.py` → API with FastAPI
+- `helpers.py` → utilities (file validation, cleaning, LLM functions, etc.)
 
-> Nota: si en tu repo el archivo se llama `helper.py` en singular, renómbralo a `helpers.py` o ajusta los `import`.
+> Note: If your repo has the file named `helper.py` (singular), rename it to `helpers.py` or adjust the imports.
 
 ---
 
-## 🚀 Características
+## 🚀 Features
 
-- **/split**: valida PDF y separa por páginas en `./pages`.
-- **/extract**: analiza una página PDF (`pages/<base>_page_<N>.pdf`), construye un DataFrame con *chunks* y lo guarda como Excel en `./results`.
-- **/generate**: toma un Excel de `./results`, resume/estructura con LLM y guarda la tabla final en `./tables`.
-- **/insert**: lee un Excel de `./tables` y lo inserta en PostgreSQL (`tbl_captura_ia`) con `pg8000`.
+- **/split**: Validates PDF and splits into pages in `./pages`.
+- **/extract**: Analyzes a PDF page (`pages/<base>_page_<N>.pdf`), builds a DataFrame with *chunks*, and saves it as Excel in `./results`.
+- **/generate**: Takes an Excel from `./results`, summarizes/structures it with LLM, and saves the final table in `./tables`.
+- **/insert**: Reads an Excel from `./tables` and inserts it into PostgreSQL (`tbl_captura_ia`) using `pg8000`.
 
-Estructura de carpetas (se crean al iniciar la app):
+Folder structure (created when the app starts):
 ```
-files/    # PDFs de entrada
-pages/    # PDFs paginados (<base>_page_<N>.pdf)
-results/  # extracción cruda a Excel
-tables/   # tablas generadas (listas "aplanadas") a Excel
+files/    # Input PDFs
+pages/    # Paginated PDFs (<base>_page_<N>.pdf)
+results/  # Raw extraction to Excel
+tables/   # Generated tables (flattened) to Excel
 ```
 
 ---
 
 ## 🧩 Endpoints
 
-| Método | Ruta        | Descripción |
+| Method | Path        | Description |
 |---|---|---|
-| GET | `/` | Mensaje de bienvenida. |
-| GET | `/split?filename=<archivo.pdf>` | Valida y separa el PDF por páginas en `pages/`. |
-| GET | `/extract?filename=<base>_page_<N>.pdf` | Extrae contenido (chunks) y guarda Excel en `results/`. |
-| GET | `/generate?filename=<base>_page_<N>.xlsx` | LLM → JSON → DataFrame; enriquece metadatos y guarda Excel en `tables/`. |
-| GET | `/insert?filename=<base>_page_<N>_generated.xlsx` | Inserta el Excel de `tables/` a PostgreSQL (`tbl_captura_ia`). |
+| GET | `/` | Welcome message. |
+| GET | `/split?filename=<file.pdf>` | Validates and splits the PDF into pages in `pages/`. |
+| GET | `/extract?filename=<base>_page_<N>.pdf` | Extracts content (chunks) and saves Excel in `results/`. |
+| GET | `/generate?filename=<base>_page_<N>.xlsx` | LLM → JSON → DataFrame; enriches metadata and saves Excel in `tables/`. |
+| GET | `/insert?filename=<base>_page_<N>_generated.xlsx` | Inserts the Excel from `tables/` into PostgreSQL (`tbl_captura_ia`). |
 
-### Ejemplos rápidos
+### Quick Examples
 
 - Split:  
   `GET http://localhost:8000/split?filename=covalca_3.pdf`
@@ -48,101 +48,101 @@ tables/   # tablas generadas (listas "aplanadas") a Excel
 - Insert:  
   `GET http://localhost:8000/insert?filename=covalca_1_page_1_generated.xlsx`
 
-> Abre `http://localhost:8000/docs` para probar con Swagger.
+> Open `http://localhost:8000/docs` to test with Swagger.
 
 ---
 
-## 🛠️ Dependencias
+## 🛠️ Dependencies
 
 - **FastAPI**, **Uvicorn** (ASGI)
-- **pypdf** (o PyPDF2 como respaldo)
+- **pypdf** (or PyPDF2 as fallback)
 - **pandas**, **openpyxl**
 - **pg8000** (PostgreSQL)
-- **python-dotenv** (cargar `.env`)
-- **beautifulsoup4** (parseo de tabla HTML)
-- Paquete del extractor: `agentic_doc.parse` (tu framework de **Agentic Document Extraction**)
-- **openai** (cliente Python para la etapa LLM)
+- **python-dotenv** (load `.env`)
+- **beautifulsoup4** (HTML table parsing)
+- Extraction package: `agentic_doc.parse` (your **Agentic Document Extraction** framework)
+- **openai** (Python client for LLM stage)
 
-Instalación típica:
+Typical installation:
 
 ```bash
 pip install fastapi uvicorn pypdf pandas openpyxl pg8000 python-dotenv beautifulsoup4 openai
-# y tu paquete/SDK para agentic_doc.parse
+# and your package/SDK for agentic_doc.parse
 ```
 
-Python recomendado: **3.10+**.
+Recommended Python: **3.10+**.
 
 ---
 
-## 🔐 Variables de entorno
+## 🔐 Environment Variables
 
-Crea un archivo `.env` en la raíz del proyecto:
+Create a `.env` file in the project root:
 
 ```env
 # OpenAI
-OPENAI_API_KEY=tu_api_key
-VISION_AGENT_API_KEY=tu_api_key_opcional
+OPENAI_API_KEY=your_api_key
+VISION_AGENT_API_KEY=your_optional_api_key
 
 # PostgreSQL
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME=mi_base
-DB_USER=mi_usuario
-DB_PASSWORD=mi_password
+DB_NAME=my_database
+DB_USER=my_user
+DB_PASSWORD=my_password
 ```
 
-`helpers.get_secret` carga estos valores con soporte para `.env`.
+`helpers.get_secret` loads these values with `.env` support.
 
 ---
 
-## ▶️ Cómo ejecutar
+## ▶️ How to Run
 
-1) Clona e instala dependencias.  
-2) Ejecuta la API:
+1) Clone and install dependencies.  
+2) Run the API:
 
 ```bash
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-- En el navegador usa **http://localhost:8000** (no `0.0.0.0`).
-- Documentación interactiva: **http://localhost:8000/docs**
+- In the browser, use **http://localhost:8000** (not `0.0.0.0`).
+- Interactive documentation: **http://localhost:8000/docs**
 
 ---
 
-## 🧠 Flujo de trabajo
+## 🧠 Workflow
 
 1. **/split**  
-   - Verifica `.pdf` / `.PDF`.  
-   - Normaliza extensión a `.pdf` (maneja *case-insensitive* de Windows).  
-   - Divide por páginas: `pages/<base>_page_<N>.pdf`.
+   - Verifies `.pdf` / `.PDF`.  
+   - Normalizes extension to `.pdf` (handles Windows *case-insensitive*).  
+   - Splits into pages: `pages/<base>_page_<N>.pdf`.
 
 2. **/extract**  
-   - Usa `agentic_doc.parse.parse(...)`.  
-   - Construye un DataFrame con:
+   - Uses `agentic_doc.parse.parse(...)`.  
+   - Builds a DataFrame with:
      - `chunk_id`, `chunk_type`, `text_html`  
-     - Metadatos: `name_file`, `url_file`, `page`, `active`, `capture_log`, `subject_mail`  
-     - `clean_text` (mediante `parse_table_replace`)  
-   - Guarda como Excel en `results/`.
+     - Metadata: `name_file`, `url_file`, `page`, `active`, `capture_log`, `subject_mail`  
+     - `clean_text` (via `parse_table_replace`)  
+   - Saves as Excel in `results/`.
 
 3. **/generate**  
-   - Lee el Excel de `results`.  
-   - Concatena `clean_text` → prompt a LLM:
+   - Reads Excel from `results`.  
+   - Concatenates `clean_text` → LLM prompt:
      - `generate_invoice_json` → `_extract_json_from_text` → `balance_lists_by_item_id`  
-   - Crea `gen_df` (una fila por item).  
-   - `enrich_df(df, gen_df)` copia metadatos desde `df`.  
-   - Guarda como Excel en `tables/` (`*_generated.xlsx`).
+   - Creates `gen_df` (one row per item).  
+   - `enrich_df(df, gen_df)` copies metadata from `df`.  
+   - Saves as Excel in `tables/` (`*_generated.xlsx`).
 
 4. **/insert**  
-   - Valida `.xlsx` (`ensure_xlsx_extension`).  
-   - Lee `tables/*.xlsx` a `df` y reemplaza vacíos por `"NULL"` (literal).  
-   - Renombra columnas si aplica (`item_id`→`item`, `page`→`page_number`).  
-   - Inserta en **PostgreSQL** tabla `tbl_captura_ia` con `pg8000`.
+   - Validates `.xlsx` (`ensure_xlsx_extension`).  
+   - Reads `tables/*.xlsx` to `df` and replaces empty values with `"NULL"` (literal).  
+   - Renames columns if needed (`item_id`→`item`, `page`→`page_number`).  
+   - Inserts into **PostgreSQL** table `tbl_captura_ia` using `pg8000`.
 
 ---
 
-## 🧰 Helpers destacados
+## 🧰 Key Helpers
 
-- **Validación/normalización de archivos**
+- **File validation/normalization**
   - `ensure_xlsx_extension(path)`  
   - `_ensure_lowercase_pdf_extension(path)`  
   - `preprocess_filename(filename, files_dir)`
@@ -150,7 +150,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
   - `split_pdf_to_pages(input_pdf, output_dir)`
   - `extract_page_number(filename)`
   - `extract_original_pdf_name(file_name)`
-- **Parsing/Limpieza**
+- **Parsing/Cleaning**
   - `html_table_to_tuples(html)`  
   - `parse_table_replace(row)`  
   - `clean_filename(filename)`
@@ -164,17 +164,17 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 ---
 
-## ⚠️ Errores comunes y tips
+## ⚠️ Common Errors and Tips
 
-- **422 (Unprocessable Content)**: parámetro incorrecto. Ej.: `/extract` requiere `filename` (no `file_name`).  
-- **415 (Unsupported Media Type)**: extensión inválida.  
-- **404**: archivo no encontrado en la carpeta esperada.  
-- **0.0.0.0** no es navegable: usa `http://localhost:8000` o `http://127.0.0.1:8000`.  
-- Al insertar en PostgreSQL, la cadena `"NULL"` es **texto**, no `NULL` SQL. Si necesitas `NULL` real, usa `None` en lugar de `"NULL"`.
+- **422 (Unprocessable Content)**: Incorrect parameter. E.g., `/extract` requires `filename` (not `file_name`).  
+- **415 (Unsupported Media Type)**: Invalid extension.  
+- **404**: File not found in the expected folder.  
+- **0.0.0.0** is not browsable: use `http://localhost:8000` or `http://127.0.0.1:8000`.  
+- When inserting into PostgreSQL, the string `"NULL"` is **text**, not SQL `NULL`. If you need actual `NULL`, use `None` instead of `"NULL"`.
 
 ---
 
-## 📂 Estructura sugerida del repo
+## 📂 Suggested Repo Structure
 
 ```
 .
@@ -188,11 +188,11 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 └─ README.md
 ```
 
-`./.env.example` (opcional) con las variables de entorno vacías para guía.
+`./.env.example` (optional) with empty environment variables as a guide.
 
 ---
 
-## 🧪 Pruebas rápidas (curl)
+## 🧪 Quick Tests (curl)
 
 ```bash
 # Split
@@ -210,16 +210,16 @@ curl "http://localhost:8000/insert?filename=covalca_1_page_1_generated.xlsx"
 
 ---
 
-## 📜 Licencia
+## 📜 License
 
-MIT (o la que prefieras). Añade `LICENSE` al repo.
+MIT (or the license of your choice). Add `LICENSE` to the repo.
 
 ---
 
-## 🤝 Contribuciones
+## 🤝 Contributions
 
-Issues y PRs son bienvenidos.  
-Por favor incluye:
-- Descripción clara del cambio
-- Pasos para reproducir
-- Ejemplos de entrada/salida si aplica
+Issues and PRs are welcome.  
+Please include:
+- Clear description of the change
+- Steps to reproduce
+- Examples of input/output if applicable

@@ -1,6 +1,6 @@
 # === helpers.py ===
-# Utilidades para validación/normalización de archivos, extracción/limpieza de datos,
-# llamadas a OpenAI y posprocesamiento de estructuras para generación de tablas.
+# Utilities for file validation/normalization, data extraction/cleaning,
+# OpenAI API calls, and post-processing for table generation.
 
 import os, json, re, ast, shutil
 from openai import OpenAI
@@ -12,34 +12,34 @@ from typing import Any, Optional, Union, List, Tuple, Dict
 from copy import deepcopy
   
 class UnsupportedFileTypeError(Exception):
-    """Se lanza cuando el archivo no es PDF."""
+    """Raised when the file is not a PDF."""
     pass
 
 def enrich_df(df, gen_df):    
-    # Copia metacampos desde df (resultado de /extract) a gen_df (resultado generado por LLM):
+    # Copy metadata fields from df (result of /extract) to gen_df (LLM-generated result):
     # name_file, url_file, page, active, capture_log, subject_mail
     meta_cols = ["name_file", "url_file", "page", "active", "capture_log", "subject_mail"]
 
     def _first_non_null(series):
-        """Regresa el primer valor no nulo de la serie (o None si no hay)."""
+        """Returns the first non-null value in the series (or None if none exists)."""
         s = pd.Series(series) if not isinstance(series, pd.Series) else series
         s = s.dropna()
         return s.iloc[0] if not s.empty else None
 
-    # Construye un dict con los valores de metadatos tomados de df
+    # Build a dict with metadata values taken from df
     meta_values = {}
     for c in meta_cols:
         if c not in df.columns:
             meta_values[c] = None
         else:
-            # Si en df hay múltiples valores, tomamos el primero no-nulo.
+            # If there are multiple values in df, take the first non-null one
             meta_values[c] = _first_non_null(df[c])
 
-    # Asigna (broadcast) a todas las filas de gen_df
+    # Assign (broadcast) to all rows in gen_df
     for c, v in meta_values.items():
         gen_df[c] = v
     
-    # Devuelve una copia por seguridad (evita efectos colaterales externos)
+    # Return a copy for safety (avoids external side effects)
     enriched_df = gen_df.copy()
 
     return enriched_df
@@ -47,18 +47,18 @@ def enrich_df(df, gen_df):
 
 def ensure_xlsx_extension(path: Path) -> Path:
     """
-    Verifica que 'path' apunte a un archivo .xlsx (acepta .XLSX y normaliza a .xlsx).
-    - Retorna la ruta final (posiblemente renombrada a .xlsx).
-    - Lanza FileNotFoundError si no existe.
-    - Lanza UnsupportedFileTypeError si la extensión no es xlsx.
+    Verifies that 'path' points to an .xlsx file (accepts .XLSX and normalizes to .xlsx).
+    - Returns the final path (possibly renamed to .xlsx).
+    - Raises FileNotFoundError if it doesn't exist.
+    - Raises UnsupportedFileTypeError if the extension is not xlsx.
     """
     if not path.exists():
-        raise FileNotFoundError(f"No se encontró el archivo: {path}")
+        raise FileNotFoundError(f"File not found: {path}")
 
     if path.suffix.lower() != ".xlsx":
-        raise UnsupportedFileTypeError("El archivo debe terminar en .xlsx/.XLSX")
+        raise UnsupportedFileTypeError("File must end with .xlsx/.XLSX")
 
-    # Normaliza la extensión a minúsculas si hace falta (útil en Windows)
+    # Normalize extension to lowercase if needed (useful on Windows)
     if path.suffix != ".xlsx":
         target = path.with_suffix(".xlsx")
         try:
@@ -73,80 +73,80 @@ def ensure_xlsx_extension(path: Path) -> Path:
 
 def _ensure_lowercase_pdf_extension(path: Path) -> Path:
     """
-    Si el archivo termina en .PDF, intenta renombrarlo a .pdf.
-    Maneja Windows (case-insensitive) usando un renombrado temporal si es necesario.
-    Retorna la ruta final (puede ser la misma si no se renombró).
+    If the file ends with .PDF, tries to rename it to .pdf.
+    Handles Windows (case-insensitive) using a temporary rename if needed.
+    Returns the final path (may be the same if not renamed).
     """
     if not path.exists():
-        raise FileNotFoundError(f"No se encontró el archivo: {path}")
+        raise FileNotFoundError(f"File not found: {path}")
 
-    # Si ya es .pdf (minúsculas), no hacemos nada
+    # If it's already .pdf (lowercase), do nothing
     if path.suffix == ".pdf":
         return path
 
-    # Si es .PDF u otra combinación de mayúsculas y minúsculas
+    # If it's .PDF or other case variations
     if path.suffix.lower() == ".pdf":
         target = path.with_suffix(".pdf")
 
         if str(path) == str(target):
-            # Mismo path (puede ocurrir en FS case-insensitive); no hacemos nada
+            # Same path (can happen on case-insensitive FS); do nothing
             return target
 
         try:
-            # Intento directo
+            # Direct attempt
             os.replace(path, target)
             return target
         except OSError:
-            # En Windows, renombrar solo por cambio de mayúsculas puede fallar.
-            # Hacemos un hop por un nombre temporal y luego al definitivo.
+            # On Windows, renaming just by case change might fail.
+            # Use a temporary name and then rename to final.
             tmp = path.with_name(path.stem + ".__tmp__")
             os.replace(path, tmp)
             os.replace(tmp, target)
             return target
 
-    # No es PDF
-    raise UnsupportedFileTypeError("El archivo no tiene extensión .pdf/.PDF")
+    # Not a PDF
+    raise UnsupportedFileTypeError("File does not have a .pdf/.PDF extension")
 
 def preprocess_filename(filename: str, files_dir: Path) -> Path:
     """
-    Preprocesa el nombre de archivo:
-      - Verifica que exista en 'files_dir'
-      - Verifica que tenga extensión .pdf o .PDF
-      - Normaliza a .pdf en disco si venía como .PDF (u otra capitalización)
-    Retorna la ruta final (con .pdf minúscula si aplicó).
+    Preprocesses the filename:
+      - Verifies it exists in 'files_dir'
+      - Verifies it has a .pdf or .PDF extension
+      - Normalizes to .pdf on disk if it was .PDF (or other case variations)
+    Returns the final path (with lowercase .pdf if applicable).
     """
     if not filename:
-        raise ValueError("Debes proporcionar el nombre del archivo")
+        raise ValueError("You must provide a filename")
 
     candidate = (files_dir / filename).resolve()
-    # Seguridad básica: que siga dentro de files_dir
+    # Basic security: ensure it's within files_dir
     if files_dir.resolve() not in candidate.parents:
-        raise ValueError("Ruta inválida fuera del directorio permitido")
+        raise ValueError("Invalid path outside allowed directory")
 
     if not candidate.exists():
-        raise FileNotFoundError(f"No se encontró el archivo en {files_dir}: {filename}")
+        raise FileNotFoundError(f"File not found in {files_dir}: {filename}")
 
-    # Verificación + normalización de extensión
+    # Verification + extension normalization
     return _ensure_lowercase_pdf_extension(candidate)
 
 def split_pdf_to_pages(input_pdf: Path, output_dir: Path) -> Tuple[int, Path]:
     """
-    Separa un PDF en páginas individuales dentro de 'output_dir'.
-    Retorna (num_pages, output_dir).
-    Los archivos se nombran: <basename>_page_<N>.pdf
+    Splits a PDF into individual pages inside 'output_dir'.
+    Returns (num_pages, output_dir).
+    Files are named: <basename>_page_<N>.pdf
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Import lazy para soportar pypdf o PyPDF2
+    # Lazy import to support both pypdf and PyPDF2
     try:
-        from pypdf import PdfReader, PdfWriter  # pypdf recomendado
+        from pypdf import PdfReader, PdfWriter  # preferred pypdf
     except Exception:
         from PyPDF2 import PdfReader, PdfWriter  # fallback
 
     reader = PdfReader(str(input_pdf))
     num_pages = len(reader.pages)
 
-    basename = input_pdf.stem  # sin extensión
+    basename = input_pdf.stem  # without extension
     for i in range(num_pages):
         writer = PdfWriter()
         writer.add_page(reader.pages[i])
@@ -163,7 +163,7 @@ def split_pdf_to_pages(input_pdf: Path, output_dir: Path) -> Tuple[int, Path]:
 
 def extract_page_number(filename):
     """
-    Extrae el número de página de un nombre de archivo con el formato *_page_NUMERO.pdf
+    Extracts the page number from a filename with format '*_page_NUMBER.pdf'
     """
     match = re.search(r'_page_(\d+)\.pdf$', filename)
     if match:
@@ -174,17 +174,17 @@ def extract_page_number(filename):
 
 def extract_original_pdf_name(file_name: str) -> str:
     """
-    Dado 'covalca_3_page_16.pdf' -> 'covalca_3.pdf'
-    Si no matchea el patrón, retorna el mismo nombre asegurando extensión .pdf
+    Given 'covalca_3_page_16.pdf' -> returns 'covalca_3.pdf'
+    If the pattern doesn't match, returns the same name ensuring .pdf extension
     """
     if not file_name:
-        raise ValueError("file_name vacío")
+        raise ValueError("Empty file_name")
 
-    # Forzamos extensión .pdf en minúsculas
+    # Force .pdf extension in lowercase
     if not file_name.lower().endswith(".pdf"):
-        raise ValueError("El archivo debe terminar en .pdf/.PDF")
+        raise ValueError("File must end with .pdf/.PDF")
 
-    # Normalizamos a minúsculas solo para extraer; devolvemos .pdf
+    # Normalize to lowercase only for extraction; return .pdf
     name = Path(file_name).name
     m = re.match(r"^(?P<base>.+?)_page_\d+\.pdf$", name, flags=re.IGNORECASE)
     base = m.group("base") if m else Path(name).stem
@@ -211,11 +211,14 @@ def get_secret(
 
 
 def html_table_to_tuples(html: str) -> List[Tuple[str, ...]]:
-
+    """
+    Converts an HTML table to a list of tuples representing the table rows.
+    Returns an empty list if no table is found in the HTML.
+    """
     soup = BeautifulSoup(html, "html.parser")
     table = soup.find("table")
     if table is None:
-        return []          # Sin tabla → lista vacía
+        return []          # No table → empty list
 
     rows_tuples = []
     for row in table.find_all("tr"):
@@ -229,7 +232,10 @@ def parse_table_replace(row):
     return None
 
 def clean_filename(filename: str) -> str:
-
+    """
+    Cleans a filename by removing the last underscore and number before the extension.
+    Example: 'file_123_45.pdf' -> 'file_123.pdf'
+    """
     try:
         base, ext = filename.rsplit(".", 1)
     except ValueError:
@@ -240,7 +246,10 @@ def clean_filename(filename: str) -> str:
     return f"{cleaned_base}.{ext}"
 
 def generate_invoice_json(client: OpenAI, resume_markdown: str):
- 
+    """
+    Generates structured invoice data from markdown text using OpenAI's API.
+    Returns a JSON object with invoice details.
+    """
     system_prompt = (
                         "You are an AI résumé / invoice → JSON converter.\n"
                         "Your only goal is to transform user‑supplied Markdown into one valid JSON "
@@ -255,7 +264,7 @@ def generate_invoice_json(client: OpenAI, resume_markdown: str):
             The number of rows equals the count of **unique `item_id` values**.  
             Ensure every list has that same length.
             
-            ## INPUT (≤ 650 tokens)
+            ## INPUT (≤ 650 tokens)
             {resume_markdown}
             
             ## SCHEMA
@@ -288,7 +297,7 @@ def generate_invoice_json(client: OpenAI, resume_markdown: str):
             2. Lists the items if the item_id does not exist as a string numeric value in the invoice.
             3. If the input is text extracted from a Trexsel invoice, ignore 'FEDEX IP: ' row from list of tuples.
             4. Use valid UTF‑8, standard double quotes, no trailing commas.
-            5. The entire response must be ≤ 3000 tokens.
+            5. The entire response must be ≤ 3000 tokens.
             6. Just extract the client's address and ignores information regarding email, phone, or fax.
             """
     
